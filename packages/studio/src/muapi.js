@@ -14,6 +14,45 @@ function notifyAuthRequired(status, detail) {
     window.dispatchEvent(new CustomEvent('muapi:auth-required', { detail: { status, message: detail } }));
 }
 
+function readProviderMessage(raw) {
+    if (!raw) return '';
+    try {
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'string') return parsed;
+        return parsed.detail || parsed.error || parsed.message || parsed.code || raw;
+    } catch {
+        return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+}
+
+function apiError(status, statusText, raw, operation = 'request') {
+    const providerMessage = readProviderMessage(raw);
+    const suffix = providerMessage ? ` Provider message: ${providerMessage}` : '';
+    let message;
+
+    if (status === 401 || status === 403) {
+        message = 'MuAPI authentication failed. Enter a valid MuAPI access key in Settings.';
+    } else if (status === 404) {
+        message = 'MuAPI model or endpoint was not found. Check the selected model and its endpoint.';
+    } else if (status === 408 || status === 504) {
+        message = 'MuAPI timed out while processing the request. Please try again.';
+    } else if (status === 429) {
+        message = 'MuAPI rate limit or quota exceeded. Check your MuAPI balance and try again later.';
+    } else if (status >= 500) {
+        message = `MuAPI provider error (${status}). Please try again shortly.`;
+    } else if (status === 400 || status === 422) {
+        message = 'MuAPI rejected the request. Check the prompt, media, and selected model.';
+    } else {
+        message = `MuAPI ${operation} failed (${status}${statusText ? ` ${statusText}` : ''}).`;
+    }
+
+    return new Error(`${message}${suffix}`, { cause: { status, providerMessage } });
+}
+
+function missingKeyError() {
+    return new Error('MuAPI access key is missing. Enter a valid MuAPI access key in Settings.');
+}
+
 async function pollForResult(requestId, key, maxAttempts = 900, interval = 2000) {
     const pollUrl = `${BASE_URL}/api/v1/predictions/${requestId}/result`;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -24,9 +63,12 @@ async function pollForResult(requestId, key, maxAttempts = 900, interval = 2000)
             });
             if (!response.ok) {
                 const errText = await response.text();
-                if (response.status >= 500) continue;
+                if (response.status >= 500) {
+                    if (attempt === maxAttempts) throw apiError(response.status, response.statusText, errText, 'poll');
+                    continue;
+                }
                 notifyAuthRequired(response.status, errText);
-                throw new Error(`Poll Failed: ${response.status} - ${errText.slice(0, 100)}`);
+                throw apiError(response.status, response.statusText, errText, 'poll');
             }
             const data = await response.json();
             const status = data.status?.toLowerCase();
@@ -40,16 +82,22 @@ async function pollForResult(requestId, key, maxAttempts = 900, interval = 2000)
 }
 
 async function submitAndPoll(endpoint, payload, key, onRequestId, maxAttempts = 60) {
+    if (!key?.trim()) throw missingKeyError();
     const url = `${BASE_URL}/api/v1/${endpoint}`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
-        body: JSON.stringify(payload)
-    });
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+            body: JSON.stringify(payload)
+        });
+    } catch (error) {
+        throw new Error('Could not reach the Railway API proxy. Check the deployment URL and your network connection.', { cause: error });
+    }
     if (!response.ok) {
         const errText = await response.text();
         notifyAuthRequired(response.status, errText);
-        throw new Error(`API Request Failed: ${response.status} ${response.statusText} - ${errText.slice(0, 100)}`);
+        throw apiError(response.status, response.statusText, errText);
     }
     const submitData = await response.json();
     const requestId = submitData.request_id || submitData.id;
