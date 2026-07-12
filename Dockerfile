@@ -11,10 +11,6 @@ RUN git clone https://github.com/SamurAIGPT/Vibe-Workflow.git packages/Vibe-Work
     && git clone https://github.com/Anil-matcha/Open-AI-Design-Agent.git packages/Open-AI-Design-Agent \
     && git -C packages/Open-AI-Design-Agent checkout e179fe1a6c47b26ee6afac9128155d9f259a5d14
 COPY package*.json ./
-COPY packages/Vibe-Workflow/packages/workflow-builder/package*.json ./packages/Vibe-Workflow/packages/workflow-builder/
-COPY packages/Open-Poe-AI/packages/agents/package*.json ./packages/Open-Poe-AI/packages/agents/
-COPY packages/Open-AI-Design-Agent/packages/design-agent/package*.json ./packages/Open-AI-Design-Agent/packages/design-agent/
-COPY packages/studio/package*.json ./packages/studio/
 RUN npm install
 
 # Build sub-packages
