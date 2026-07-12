@@ -35,8 +35,11 @@ export async function GET(request, { params }) {
 
     try {
         const response = await fetch(targetUrl, { headers, method: 'GET' });
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
+        const body = await response.text();
+        return new Response(body, {
+            status: response.status,
+            headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -57,8 +60,11 @@ export async function POST(request, { params }) {
     try {
         const body = await request.arrayBuffer();
         const response = await fetch(targetUrl, { method: 'POST', headers, body });
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
+        const responseBody = await response.text();
+        return new Response(responseBody, {
+            status: response.status,
+            headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
+        });
     } catch (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
