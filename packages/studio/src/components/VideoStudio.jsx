@@ -1285,8 +1285,8 @@ export default function VideoStudio({
     } catch (e) {
       hadError = true;
       console.error("[VideoStudio]", e);
-      setGenerateError(e.message?.slice(0, 80) || "Generation failed");
-      setTimeout(() => setGenerateError(null), 4000);
+      setGenerateError(e.message || "Video generation failed. Please try again.");
+      setTimeout(() => setGenerateError(null), 12000);
     } finally {
       setGenerating(false);
     }
